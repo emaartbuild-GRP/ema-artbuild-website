@@ -1,4 +1,5 @@
 const encoder = new TextEncoder();
+const openAIModel = "gpt-5.4-mini";
 const systemPrompt = `You are EMA, the premium, warm and precise digital project advisor for EMA ARTBUILD in Morocco.
 EMA ARTBUILD provides only: interior design, 3D design, construction, renovation, interior and exterior fit-out, and site supervision. Never call EMA ARTBUILD an architecture agency and never offer architecture services.
 Answer visitor questions truthfully, qualify residential or professional project requests, and gently guide qualified visitors to request a quote using the form on the page. Service areas: Rabat and surrounding region, Casablanca and surrounding region, Tangier, Marrakech and projects elsewhere in Morocco depending on scope.
@@ -6,12 +7,13 @@ Ask no more than one useful follow-up question at a time. Do not invent prices, 
 
 const event = (payload) => encoder.encode(`data: ${JSON.stringify(payload)}\n\n`);
 const eventStream = (body, status = 200) => new Response(body, { status, headers: { "Content-Type": "text/event-stream; charset=utf-8", "Cache-Control": "no-cache, no-transform", Connection: "keep-alive" } });
+const getEnvironmentVariable = (name) => globalThis.Netlify?.env?.get(name) || process.env[name];
 
 export default async function handler(request) {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  const apiKey = process.env.OPENAI_API_KEY;
-  const model = process.env.OPENAI_MODEL;
-  if (!apiKey || !model) return eventStream(new ReadableStream({ start(controller) { controller.enqueue(event({ type: "error", message: "L’assistant est momentanément indisponible." })); controller.close(); } }), 503);
+  const apiKey = getEnvironmentVariable("OPENAI_API_KEY");
+  const baseUrl = getEnvironmentVariable("OPENAI_BASE_URL") || "https://api.openai.com/v1";
+  if (!apiKey) return eventStream(new ReadableStream({ start(controller) { controller.enqueue(event({ type: "error", message: "L’assistant est momentanément indisponible." })); controller.close(); } }), 503);
 
   let input;
   try { input = await request.json(); } catch { return new Response("Invalid JSON", { status: 400 }); }
@@ -23,10 +25,10 @@ export default async function handler(request) {
   )) : [];
 
   try {
-    const upstream = await fetch("https://api.openai.com/v1/responses", {
+    const upstream = await fetch(`${baseUrl.replace(/\/$/, "")}/responses`, {
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ model, instructions: systemPrompt, input: [...history, { role: "user", content: message }], stream: true, max_output_tokens: 350 }),
+      body: JSON.stringify({ model: openAIModel, instructions: systemPrompt, input: [...history, { role: "user", content: message }], stream: true, max_output_tokens: 350 }),
     });
     if (!upstream.ok || !upstream.body) {
       console.error("OpenAI request failed", upstream.status, await upstream.text());
