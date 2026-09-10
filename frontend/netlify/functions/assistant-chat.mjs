@@ -11,8 +11,12 @@ const getEnvironmentVariable = (name) => globalThis.Netlify?.env?.get(name) || p
 
 export default async function handler(request) {
   if (request.method !== "POST") return new Response("Method not allowed", { status: 405 });
-  const apiKey = getEnvironmentVariable("OPENAI_API_KEY");
-  const baseUrl = getEnvironmentVariable("OPENAI_BASE_URL") || "https://api.openai.com/v1";
+  const gatewayKey = getEnvironmentVariable("NETLIFY_AI_GATEWAY_KEY");
+  const gatewayBaseUrl = getEnvironmentVariable("NETLIFY_AI_GATEWAY_BASE_URL");
+  const apiKey = gatewayKey || getEnvironmentVariable("OPENAI_API_KEY");
+  const baseUrl = gatewayBaseUrl
+    ? `${gatewayBaseUrl.replace(/\/$/, "")}/v1`
+    : getEnvironmentVariable("OPENAI_BASE_URL") || "https://api.openai.com/v1";
   if (!apiKey) return eventStream(new ReadableStream({ start(controller) { controller.enqueue(event({ type: "error", message: "L’assistant est momentanément indisponible." })); controller.close(); } }), 503);
 
   let input;
